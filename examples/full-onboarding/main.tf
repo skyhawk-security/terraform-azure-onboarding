@@ -24,6 +24,14 @@ module "tenant_permissions" {
   # includes the Skyhawk prod collector NAT IP; override ONLY if Skyhawk instructs you to (e.g.,
   # a different collection region). Must be non-empty.
   # collector_egress_ips = ["3.227.150.87/32"]
+
+  # Log collection opt-out (all pipelines enabled by default). See the module README section
+  # "Log collection opt-out" for consequences; disabling activity logs on an existing deployment
+  # is data-destructive.
+  # enable_activity_logs          = false
+  # enable_vnet_flow_logs         = false
+  # activity_log_categories       = ["Administrative", "Security"] # optional subset when activity logs are on
+  # acknowledge_no_log_collection = true # required only if BOTH pipelines above are false
 }
 
 # terraform {

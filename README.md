@@ -59,7 +59,7 @@ module "skyhawk_onboarding" {
   # Set false to skip flow log creation.
   # enable_vnet_flow_logs = false
 
-  # Activity Logs (Administrative/Security/Sign-in/Audit etc.) are enabled by default.
+  # Activity Logs (Administrative/Security/Policy/Health etc.) are enabled by default.
   # Set false to skip the entire Activity Log pipeline. See "Log collection opt-out" below —
   # disabling this on an existing deployment is data-destructive.
   # enable_activity_logs = false
@@ -111,13 +111,12 @@ Both are enabled by default so existing deployments are unaffected on upgrade.
 
 ### Activity Log pipeline (`enable_activity_logs`, default `true`)
 
-Provides subscription control-plane and identity signals: administrative operations, sign-in and
-audit events, security, policy, and service/resource health. These are core detection inputs for
-Skyhawk.
+Provides subscription control-plane signals: administrative operations, security, policy, and
+service/resource health. These are core detection inputs for Skyhawk.
 
-Consequence of disabling: identity- and control-plane-based detections (e.g., privilege changes,
-suspicious sign-ins, policy/administrative activity) are degraded or unavailable. Use
-`activity_log_categories` to collect only a subset instead of disabling the pipeline entirely.
+Consequence of disabling: control-plane-based detections (e.g., privilege changes, policy and
+administrative activity) are degraded or unavailable. Use `activity_log_categories` to collect only
+a subset instead of disabling the pipeline entirely.
 
 > **Data-destructive change.** Setting `enable_activity_logs = false` on an existing deployment
 > destroys the per-subscription activity storage account (and its resource group and Event Grid

@@ -110,12 +110,13 @@ variable "enable_vnet_flow_logs" {
 variable "enable_activity_logs" {
   description = <<-EOT
     Enable the Activity Log pipeline (per-subscription diagnostic settings, storage account, and Event
-    Grid subscription that forward Activity/Audit/Sign-in/StorageRead logs to Skyhawk). Enabled by
-    default. Set false to skip creating the entire Activity Log pipeline.
+    Grid subscription that forward Azure subscription Activity Log categories — administrative,
+    security, policy, and service/resource health — to Skyhawk). Enabled by default. Set false to skip
+    creating the entire Activity Log pipeline.
 
-    WARNING: disabling this removes core identity- and control-plane detection signals for Skyhawk, and
-    changing it from true to false on an existing deployment is DATA-DESTRUCTIVE (it deletes the activity
-    storage account and any log blobs not yet forwarded).
+    WARNING: disabling this removes core control-plane detection signals for Skyhawk, and changing it
+    from true to false on an existing deployment is DATA-DESTRUCTIVE (it deletes the activity storage
+    account and any log blobs not yet forwarded).
   EOT
   type        = bool
   default     = true
@@ -158,6 +159,20 @@ variable "activity_log_categories" {
     ])
     error_message = "activity_log_categories may only contain: Administrative, Security, ServiceHealth, Alert, Recommendation, Policy, Autoscale, ResourceHealth. Remove any other value."
   }
+
+  validation {
+    # Reject duplicate categories: a repeated value produces a duplicate diagnostic-setting log entry
+    # that the Azure API rejects on apply. Catch it early at validate time.
+    condition     = length(distinct(var.activity_log_categories)) == length(var.activity_log_categories)
+    error_message = "activity_log_categories must not contain duplicate values."
+  }
+
+  validation {
+    # At least one category must be selected when Activity Logs are enabled. Cross-variable reference
+    # is supported on the module's required Terraform version (>= 1.9).
+    condition     = !var.enable_activity_logs || length(var.activity_log_categories) > 0
+    error_message = "activity_log_categories must not be empty when enable_activity_logs = true. Select at least one category, or set enable_activity_logs = false to disable the pipeline."
+  }
 }
 
 variable "acknowledge_no_log_collection" {
@@ -168,6 +183,13 @@ variable "acknowledge_no_log_collection" {
   EOT
   type        = bool
   default     = false
+
+  validation {
+    # Refuse a fully-blind posture (both pipelines off) unless explicitly acknowledged. Cross-variable
+    # reference is supported on the module's required Terraform version (>= 1.9).
+    condition     = var.enable_activity_logs || var.enable_vnet_flow_logs || var.acknowledge_no_log_collection
+    error_message = "Both enable_activity_logs and enable_vnet_flow_logs are false: NO security telemetry would reach Skyhawk for this tenant. If this is intentional, set acknowledge_no_log_collection = true to proceed."
+  }
 }
 
 variable "collector_egress_ips" {
@@ -187,7 +209,7 @@ variable "collector_egress_ips" {
     log ingestion. Validation below rejects an empty list.
   EOT
   type        = list(string)
-  default     = ["3.227.150.87/32", "35.172.205.234/32"]
+  default     = ["3.227.150.87/32"]
 
   validation {
     # Reject an empty list explicitly: alltrue([]) is vacuously true, so without this a
