@@ -107,6 +107,95 @@ variable "enable_vnet_flow_logs" {
   default     = true
 }
 
+variable "enable_activity_logs" {
+  description = <<-EOT
+    Enable the Activity Log pipeline (per-subscription diagnostic settings, storage account, and Event
+    Grid subscription that forward Azure subscription Activity Log categories — administrative,
+    security, policy, and service/resource health — to Skyhawk). Enabled by default. Set false to skip
+    creating the entire Activity Log pipeline.
+
+    WARNING: disabling this removes core control-plane detection signals for Skyhawk, and changing it
+    from true to false on an existing deployment is DATA-DESTRUCTIVE: it deletes the per-subscription
+    activity storage account, its resource group, the diagnostic setting, and the Event Grid
+    subscription — along with any log blobs written but not yet forwarded to Skyhawk.
+  EOT
+  type        = bool
+  default     = true
+  nullable    = false
+}
+
+variable "activity_log_categories" {
+  description = <<-EOT
+    Azure subscription Activity Log categories to collect via diagnostic settings when
+    enable_activity_logs is true. Defaults to the full set Skyhawk ingests. Only used when
+    enable_activity_logs is true.
+  EOT
+  type        = list(string)
+  nullable    = false
+  default = [
+    "Administrative",
+    "Security",
+    "ServiceHealth",
+    "Alert",
+    "Recommendation",
+    "Policy",
+    "Autoscale",
+    "ResourceHealth",
+  ]
+
+  validation {
+    # Reject any category outside the set the module supports / Skyhawk ingests.
+    condition = alltrue([
+      for category in var.activity_log_categories : contains(
+        [
+          "Administrative",
+          "Security",
+          "ServiceHealth",
+          "Alert",
+          "Recommendation",
+          "Policy",
+          "Autoscale",
+          "ResourceHealth",
+        ],
+        category,
+      )
+    ])
+    error_message = "activity_log_categories may only contain: Administrative, Security, ServiceHealth, Alert, Recommendation, Policy, Autoscale, ResourceHealth. Remove any other value."
+  }
+
+  validation {
+    # Reject duplicate categories: a repeated value produces a duplicate diagnostic-setting log entry
+    # that the Azure API rejects on apply. Catch it early at validate time.
+    condition     = length(distinct(var.activity_log_categories)) == length(var.activity_log_categories)
+    error_message = "activity_log_categories must not contain duplicate values."
+  }
+
+  validation {
+    # At least one category must be selected when Activity Logs are enabled. Cross-variable reference
+    # is supported on the module's required Terraform version (>= 1.9).
+    condition     = !var.enable_activity_logs || length(var.activity_log_categories) > 0
+    error_message = "activity_log_categories must not be empty when enable_activity_logs = true. Select at least one category, or set enable_activity_logs = false to disable the pipeline."
+  }
+}
+
+variable "acknowledge_no_log_collection" {
+  description = <<-EOT
+    Explicit acknowledgement required to onboard with NO log collection at all. When both
+    enable_activity_logs and enable_vnet_flow_logs are false, the module fails unless this is set to
+    true, preventing an accidental fully-blind posture where no security telemetry reaches Skyhawk.
+  EOT
+  type        = bool
+  default     = false
+  nullable    = false
+
+  validation {
+    # Refuse a fully-blind posture (both pipelines off) unless explicitly acknowledged. Cross-variable
+    # reference is supported on the module's required Terraform version (>= 1.9).
+    condition     = var.enable_activity_logs || var.enable_vnet_flow_logs || var.acknowledge_no_log_collection
+    error_message = "Both enable_activity_logs and enable_vnet_flow_logs are false: NO security telemetry would reach Skyhawk for this tenant. If this is intentional, set acknowledge_no_log_collection = true to proceed."
+  }
+}
+
 variable "collector_egress_ips" {
   description = <<-EOT
     Public egress IP addresses (CIDR notation) of the Skyhawk log collectors that read blob content

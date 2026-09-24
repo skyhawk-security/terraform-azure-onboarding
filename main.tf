@@ -19,17 +19,6 @@ locals {
       provider        = combo[1]
     }
   }
-  subscription_activity_log_categories = [
-    "Administrative",
-    "Security",
-    "ServiceHealth",
-    "Alert",
-    "Recommendation",
-    "Policy",
-    "Autoscale",
-    "ResourceHealth",
-  ]
-
   normalized_subscription_configs = {
     for subscription_id in var.subscription_ids :
     subscription_id => {
@@ -50,6 +39,11 @@ locals {
       resource_group_location       = lookup(var.resource_group_locations, subscription_id, var.resource_group_location)
     }
   }
+
+  # Activity Log pipeline gate: mirrors the enable_vnet_flow_logs pattern. When enable_activity_logs
+  # is false this resolves to an empty map, so every Activity Log resource (resource group, storage
+  # account, diagnostic settings, event subscription) creates zero instances.
+  activity_log_configs = var.enable_activity_logs ? local.normalized_subscription_configs : {}
 
   application_password_end_date = timeadd(
     time_static.application_password_created.rfc3339,
@@ -243,7 +237,7 @@ resource "time_sleep" "wait_for_provider_registration" {
 }
 
 resource "azapi_resource" "resource_group" {
-  for_each = local.normalized_subscription_configs
+  for_each = local.activity_log_configs
 
   type      = "Microsoft.Resources/resourceGroups@2021-04-01"
   name      = substr(lower(replace(format("%s-rg", each.value.application_display_name), " ", "-")), 0, 90)
@@ -258,7 +252,7 @@ resource "azapi_resource" "resource_group" {
 }
 
 resource "azapi_resource" "storage_account" {
-  for_each = local.normalized_subscription_configs
+  for_each = local.activity_log_configs
 
   type      = "Microsoft.Storage/storageAccounts@2023-01-01"
   name      = local.storage_account_names[each.key]
@@ -283,7 +277,7 @@ resource "azapi_resource" "storage_account" {
 }
 
 resource "azapi_resource" "storage_event_subscription" {
-  for_each = local.normalized_subscription_configs
+  for_each = local.activity_log_configs
 
   type      = "Microsoft.EventGrid/eventSubscriptions@2022-06-15"
   name      = local.event_subscription_names[each.key]
@@ -328,7 +322,7 @@ resource "azapi_resource" "storage_event_subscription" {
 }
 
 resource "azapi_resource" "subscription_diagnostic_settings" {
-  for_each = local.normalized_subscription_configs
+  for_each = local.activity_log_configs
 
   type      = "Microsoft.Insights/diagnosticSettings@2021-05-01-preview"
   name      = format("skyhawksecurity-%s", substr(replace(each.value.subscription_id, "-", ""), 0, 16))
@@ -338,7 +332,7 @@ resource "azapi_resource" "subscription_diagnostic_settings" {
     properties = {
       storageAccountId = azapi_resource.storage_account[each.key].id
       logs = [
-        for category in local.subscription_activity_log_categories :
+        for category in var.activity_log_categories :
         {
           category = category
           enabled  = true

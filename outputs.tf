@@ -4,16 +4,18 @@ output "tenant_permissions" {
     key => {
       tenant_id       = config.tenant_id
       subscription_id = config.subscription_id
-      resource_group = {
+      # Activity Log pipeline resources are only created when enable_activity_logs is true.
+      # Guard these references so the output stays valid (and returns null) when the pipeline is off.
+      resource_group = var.enable_activity_logs ? {
         id       = azapi_resource.resource_group[key].id
         name     = azapi_resource.resource_group[key].name
         location = config.resource_group_location
-      }
-      storage_account = {
+      } : null
+      storage_account = var.enable_activity_logs ? {
         id       = azapi_resource.storage_account[key].id
         name     = azapi_resource.storage_account[key].name
         location = config.resource_group_location
-      }
+      } : null
       application = {
         application_id = azuread_application.tenant.id
         display_name   = azuread_application.tenant.display_name
@@ -54,6 +56,27 @@ output "client_secrets" {
 output "skh_jwt_token" {
   value     = local.skh_jwt_token
   sensitive = true
+}
+
+output "log_collection_posture" {
+  description = <<-EOT
+    Per-subscription report of which log pipelines are active. activity_logs_enabled reflects the
+    enable_activity_logs toggle. flow_logs_active is true only when enable_vnet_flow_logs is on AND
+    the subscription had at least one discovered VNet (so flow-log resources were actually created);
+    a subscription with no VNets reports false even when the flag is on.
+  EOT
+  value = {
+    for key, config in local.normalized_subscription_configs :
+    key => {
+      subscription_id       = config.subscription_id
+      activity_logs_enabled = var.enable_activity_logs
+      flow_logs_enabled     = var.enable_vnet_flow_logs
+      flow_logs_active = var.enable_vnet_flow_logs && anytrue([
+        for sa_key in keys(local.vnet_storage_accounts) :
+        startswith(sa_key, format("%s|", config.subscription_id))
+      ])
+    }
+  }
 }
 
 output "tenant_registration_response" {
