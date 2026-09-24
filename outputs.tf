@@ -59,13 +59,22 @@ output "skh_jwt_token" {
 }
 
 output "log_collection_posture" {
-  description = "Per-subscription report of which log pipelines are enabled."
+  description = <<-EOT
+    Per-subscription report of which log pipelines are active. activity_logs_enabled reflects the
+    enable_activity_logs toggle. flow_logs_active is true only when enable_vnet_flow_logs is on AND
+    the subscription had at least one discovered VNet (so flow-log resources were actually created);
+    a subscription with no VNets reports false even when the flag is on.
+  EOT
   value = {
     for key, config in local.normalized_subscription_configs :
     key => {
       subscription_id       = config.subscription_id
       activity_logs_enabled = var.enable_activity_logs
       flow_logs_enabled     = var.enable_vnet_flow_logs
+      flow_logs_active = var.enable_vnet_flow_logs && anytrue([
+        for sa_key in keys(local.vnet_storage_accounts) :
+        startswith(sa_key, format("%s|", config.subscription_id))
+      ])
     }
   }
 }

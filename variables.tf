@@ -115,11 +115,13 @@ variable "enable_activity_logs" {
     creating the entire Activity Log pipeline.
 
     WARNING: disabling this removes core control-plane detection signals for Skyhawk, and changing it
-    from true to false on an existing deployment is DATA-DESTRUCTIVE (it deletes the activity storage
-    account and any log blobs not yet forwarded).
+    from true to false on an existing deployment is DATA-DESTRUCTIVE: it deletes the per-subscription
+    activity storage account, its resource group, the diagnostic setting, and the Event Grid
+    subscription — along with any log blobs written but not yet forwarded to Skyhawk.
   EOT
   type        = bool
   default     = true
+  nullable    = false
 }
 
 variable "activity_log_categories" {
@@ -129,6 +131,7 @@ variable "activity_log_categories" {
     enable_activity_logs is true.
   EOT
   type        = list(string)
+  nullable    = false
   default = [
     "Administrative",
     "Security",
@@ -183,6 +186,7 @@ variable "acknowledge_no_log_collection" {
   EOT
   type        = bool
   default     = false
+  nullable    = false
 
   validation {
     # Refuse a fully-blind posture (both pipelines off) unless explicitly acknowledged. Cross-variable

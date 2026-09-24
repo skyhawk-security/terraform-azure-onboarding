@@ -103,6 +103,7 @@ See `examples/full-onboarding` for a ready-to-fill sample.
 - `application_display_name` (string, default `skh-onboarder-1`) – Base name for the AAD app/service principal (auto-uniquified per subscription).
 - `application_password_validity` (string, default `17520h`) – Duration for the generated client secret.
 - `msgraph_roles` / `msgraph_delegated_permissions` – Graph app roles and delegated permissions granted to the service principal.
+- `auth_endpoint`, `skh_azure_tenant_endpoint`, `skh_azure_account_endpoint`, `subscription_importance` – Skyhawk API endpoints and metadata; override only if instructed by Skyhawk.
 
 ## Log collection opt-out
 
@@ -119,9 +120,9 @@ administrative activity) are degraded or unavailable. Use `activity_log_categori
 a subset instead of disabling the pipeline entirely.
 
 > **Data-destructive change.** Setting `enable_activity_logs = false` on an existing deployment
-> destroys the per-subscription activity storage account (and its resource group and Event Grid
-> subscription). Any log blobs written but not yet forwarded to Skyhawk are lost. Ensure ingestion is
-> caught up before disabling.
+> destroys the per-subscription activity storage account, its resource group, the diagnostic
+> setting, and the Event Grid subscription. Any log blobs written but not yet forwarded to Skyhawk
+> are lost. Ensure ingestion is caught up before disabling.
 
 ### Flow Log pipeline (`enable_vnet_flow_logs`, default `true`)
 
@@ -139,10 +140,10 @@ assigns roles; only log collection is skipped.
 
 When a pipeline is disabled, `terraform plan` emits a warning describing the lost detection
 capability, and the `log_collection_posture` output reports per-subscription which pipelines are on.
-- `auth_endpoint`, `skh_azure_tenant_endpoint`, `skh_azure_account_endpoint`, `subscription_importance` – Skyhawk API endpoints and metadata; override only if instructed by Skyhawk.
 
 ## Outputs
-- `tenant_permissions` – IDs/names for the resource group, storage account, and AAD app/SP per subscription.
+- `tenant_permissions` – IDs/names for the resource group, storage account, and AAD app/SP per subscription. The `resource_group` and `storage_account` fields are `null` when `enable_activity_logs = false`.
+- `log_collection_posture` – Per-subscription report of which log pipelines are enabled (`activity_logs_enabled`, `flow_logs_enabled`).
 - `client_secrets` (sensitive) – Client secret metadata and value for the service principal.
 - `skh_jwt_token` (sensitive) – JWT returned from Skyhawk auth.
 - `tenant_registration_response` / `account_registration_responses` (sensitive) – Raw HTTP response data from Skyhawk tenant/account registration.

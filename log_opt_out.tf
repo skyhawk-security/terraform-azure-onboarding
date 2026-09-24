@@ -15,6 +15,9 @@ check "activity_logs_disabled_warning" {
     error_message = join(" ", [
       "Activity Log collection is DISABLED (enable_activity_logs = false).",
       "Control-plane-based Skyhawk detections (administrative, security, policy, health) will be degraded.",
+      "If this is an EXISTING deployment, disabling is DATA-DESTRUCTIVE: the activity storage account,",
+      "its resource group, the diagnostic setting, and the Event Grid subscription will be deleted,",
+      "along with any log blobs not yet forwarded to Skyhawk. Ensure ingestion is caught up first.",
     ])
   }
 }
