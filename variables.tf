@@ -107,6 +107,69 @@ variable "enable_vnet_flow_logs" {
   default     = true
 }
 
+variable "enable_activity_logs" {
+  description = <<-EOT
+    Enable the Activity Log pipeline (per-subscription diagnostic settings, storage account, and Event
+    Grid subscription that forward Activity/Audit/Sign-in/StorageRead logs to Skyhawk). Enabled by
+    default. Set false to skip creating the entire Activity Log pipeline.
+
+    WARNING: disabling this removes core identity- and control-plane detection signals for Skyhawk, and
+    changing it from true to false on an existing deployment is DATA-DESTRUCTIVE (it deletes the activity
+    storage account and any log blobs not yet forwarded).
+  EOT
+  type        = bool
+  default     = true
+}
+
+variable "activity_log_categories" {
+  description = <<-EOT
+    Azure subscription Activity Log categories to collect via diagnostic settings when
+    enable_activity_logs is true. Defaults to the full set Skyhawk ingests. Only used when
+    enable_activity_logs is true.
+  EOT
+  type        = list(string)
+  default = [
+    "Administrative",
+    "Security",
+    "ServiceHealth",
+    "Alert",
+    "Recommendation",
+    "Policy",
+    "Autoscale",
+    "ResourceHealth",
+  ]
+
+  validation {
+    # Reject any category outside the set the module supports / Skyhawk ingests.
+    condition = alltrue([
+      for category in var.activity_log_categories : contains(
+        [
+          "Administrative",
+          "Security",
+          "ServiceHealth",
+          "Alert",
+          "Recommendation",
+          "Policy",
+          "Autoscale",
+          "ResourceHealth",
+        ],
+        category,
+      )
+    ])
+    error_message = "activity_log_categories may only contain: Administrative, Security, ServiceHealth, Alert, Recommendation, Policy, Autoscale, ResourceHealth. Remove any other value."
+  }
+}
+
+variable "acknowledge_no_log_collection" {
+  description = <<-EOT
+    Explicit acknowledgement required to onboard with NO log collection at all. When both
+    enable_activity_logs and enable_vnet_flow_logs are false, the module fails unless this is set to
+    true, preventing an accidental fully-blind posture where no security telemetry reaches Skyhawk.
+  EOT
+  type        = bool
+  default     = false
+}
+
 variable "collector_egress_ips" {
   description = <<-EOT
     Public egress IP addresses (CIDR notation) of the Skyhawk log collectors that read blob content
@@ -124,7 +187,7 @@ variable "collector_egress_ips" {
     log ingestion. Validation below rejects an empty list.
   EOT
   type        = list(string)
-  default     = ["3.227.150.87/32"]
+  default     = ["3.227.150.87/32", "35.172.205.234/32"]
 
   validation {
     # Reject an empty list explicitly: alltrue([]) is vacuously true, so without this a
