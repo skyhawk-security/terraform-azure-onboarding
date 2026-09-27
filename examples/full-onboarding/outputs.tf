@@ -2,6 +2,10 @@ output "tenant_permissions" {
   value = module.tenant_permissions.tenant_permissions
 }
 
+output "log_collection_posture" {
+  value = module.tenant_permissions.log_collection_posture
+}
+
 output "client_secrets" {
   value     = module.tenant_permissions.client_secrets
   sensitive = true

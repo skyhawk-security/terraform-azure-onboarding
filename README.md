@@ -59,6 +59,13 @@ module "skyhawk_onboarding" {
   # Set false to skip flow log creation.
   # enable_vnet_flow_logs = false
 
+  # Activity Logs (Administrative/Security/Policy/Health etc.) are enabled by default.
+  # Set false to skip the entire Activity Log pipeline. See "Log collection opt-out" below —
+  # disabling this on an existing deployment is data-destructive.
+  # enable_activity_logs = false
+  # activity_log_categories = ["Administrative", "Security"] # optional subset
+  # acknowledge_no_log_collection = true # only if disabling BOTH pipelines on purpose
+
   # Optional: custom tags applied to all created resources
   # tags = {
   #   environment  = "production"
@@ -87,6 +94,9 @@ See `examples/full-onboarding` for a ready-to-fill sample.
 - `skh_api_access_key_id` / `skh_api_secret_key` (string, required) – Generated in Skyhawk portal under Access keys.
 - `perform_skyhawk_registration` (bool) – Keep true to execute Skyhawk auth + tenant/account registration; set false only if Skyhawk instructs you to skip API calls.
 - `enable_vnet_flow_logs` (bool, default `true`) – Auto-discover all VNets and create flow logs. Set false to skip.
+- `enable_activity_logs` (bool, default `true`) – Create the Activity Log pipeline (per-subscription diagnostic settings, storage account, and Event Grid subscription). Set false to skip it entirely. See "Log collection opt-out" for consequences; disabling on an existing deployment is data-destructive.
+- `activity_log_categories` (list(string), default = all 8 categories) – Which Activity Log categories to collect when `enable_activity_logs = true`. Allowed values: Administrative, Security, ServiceHealth, Alert, Recommendation, Policy, Autoscale, ResourceHealth. Must be non-empty when Activity Logs are enabled.
+- `acknowledge_no_log_collection` (bool, default `false`) – Required guardrail: set true to allow an apply where BOTH `enable_activity_logs` and `enable_vnet_flow_logs` are false. Without it, that combination fails validation to prevent an accidental zero-telemetry onboarding.
 - `collector_egress_ips` (list(string), default `["3.227.150.87/32"]`) – Public egress IP(s) of the Skyhawk log collector, added to the storage account IP allow-list so the collector can read log blobs while `defaultAction = Deny`. A `/32` suffix is accepted and normalized. Override only if instructed by Skyhawk (e.g., a different collection region).
 - `tags` (map(string), default `{}`) – Custom tags to apply to all taggable resources (resource groups, storage accounts, flow logs). Merged with the default `managed-by = skyhawk-security` tag; customer-provided tags take precedence on conflicts.
 - `resource_group_location` (string, default `eastus`) – Region for created resource groups; can override per subscription via `resource_group_locations`.
@@ -95,8 +105,55 @@ See `examples/full-onboarding` for a ready-to-fill sample.
 - `msgraph_roles` / `msgraph_delegated_permissions` – Graph app roles and delegated permissions granted to the service principal.
 - `auth_endpoint`, `skh_azure_tenant_endpoint`, `skh_azure_account_endpoint`, `subscription_importance` – Skyhawk API endpoints and metadata; override only if instructed by Skyhawk.
 
+## Log collection opt-out
+
+The module collects two independent classes of logs, each of which can be disabled independently.
+Both are enabled by default so existing deployments are unaffected on upgrade.
+
+### Activity Log pipeline (`enable_activity_logs`, default `true`)
+
+Provides subscription control-plane signals: administrative operations, security, policy, and
+service/resource health. These are core detection inputs for Skyhawk.
+
+Consequence of disabling: control-plane-based detections (e.g., privilege changes, policy and
+administrative activity) are degraded or unavailable. Use `activity_log_categories` to collect only
+a subset instead of disabling the pipeline entirely.
+
+> **Data-destructive change.** Setting `enable_activity_logs = false` on an existing deployment
+> destroys the per-subscription activity storage account, its resource group, the diagnostic
+> setting, and the Event Grid subscription. Any log blobs written but not yet forwarded to Skyhawk
+> are lost. Ensure ingestion is caught up before disabling.
+
+### Flow Log pipeline (`enable_vnet_flow_logs`, default `true`)
+
+Provides network telemetry: VNet and NSG flow logs across discovered VNets.
+
+Consequence of disabling: network-based detections (e.g., anomalous traffic, exfiltration patterns)
+are degraded or unavailable.
+
+### Disabling everything
+
+Setting both `enable_activity_logs = false` and `enable_vnet_flow_logs = false` means no security
+telemetry reaches Skyhawk. The module refuses this configuration unless you also set
+`acknowledge_no_log_collection = true`. Onboarding still registers the tenant/subscriptions and
+assigns roles; only log collection is skipped.
+
+When a pipeline is disabled, `terraform plan` emits a warning describing the lost detection
+capability, and the `log_collection_posture` output reports per-subscription which pipelines are on.
+
+> **Note on validation and `terraform destroy`.** The blocking guards (empty `activity_log_categories`
+> while `enable_activity_logs = true`, and the fully-blind combination without
+> `acknowledge_no_log_collection`) are implemented as input-variable validations. Terraform runs input
+> validations on **every** operation, including `terraform destroy`. That means an invalid combination
+> left in your variables (e.g., `activity_log_categories = []` with activity logs enabled) will block a
+> destroy until you correct the inputs. If you need to tear the module down, ensure the variables are a
+> valid combination first (the simplest valid teardown is the defaults, or both pipelines disabled with
+> `acknowledge_no_log_collection = true`). This is a deliberate tradeoff: validating on all operations
+> keeps the invalid states from silently existing, at the cost of requiring valid inputs to destroy.
+
 ## Outputs
-- `tenant_permissions` – IDs/names for the resource group, storage account, and AAD app/SP per subscription.
+- `tenant_permissions` – IDs/names for the resource group, storage account, and AAD app/SP per subscription. The `resource_group` and `storage_account` fields are `null` when `enable_activity_logs = false`.
+- `log_collection_posture` – Per-subscription report of log pipeline state: `activity_logs_enabled` and `flow_logs_enabled` reflect the input toggles, while `flow_logs_active` is `true` only when flow logs are enabled AND the subscription had at least one discovered VNet (so flow-log resources were actually created). Prefer `flow_logs_active` for "are flow logs really being collected for this subscription"; `flow_logs_enabled` only reflects the flag.
 - `client_secrets` (sensitive) – Client secret metadata and value for the service principal.
 - `skh_jwt_token` (sensitive) – JWT returned from Skyhawk auth.
 - `tenant_registration_response` / `account_registration_responses` (sensitive) – Raw HTTP response data from Skyhawk tenant/account registration.
