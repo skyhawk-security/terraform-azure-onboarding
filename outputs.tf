@@ -71,10 +71,10 @@ output "log_collection_posture" {
       subscription_id       = config.subscription_id
       activity_logs_enabled = var.enable_activity_logs
       flow_logs_enabled     = var.enable_vnet_flow_logs
-      flow_logs_active = var.enable_vnet_flow_logs && anytrue([
-        for sa_key in keys(local.vnet_storage_accounts) :
-        startswith(sa_key, format("%s|", config.subscription_id))
-      ])
+      flow_logs_active = var.enable_vnet_flow_logs && contains(
+        [for item in values(local.vnet_storage_accounts) : item.subscription_id],
+        config.subscription_id,
+      )
     }
   }
 }

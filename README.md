@@ -141,9 +141,19 @@ assigns roles; only log collection is skipped.
 When a pipeline is disabled, `terraform plan` emits a warning describing the lost detection
 capability, and the `log_collection_posture` output reports per-subscription which pipelines are on.
 
+> **Note on validation and `terraform destroy`.** The blocking guards (empty `activity_log_categories`
+> while `enable_activity_logs = true`, and the fully-blind combination without
+> `acknowledge_no_log_collection`) are implemented as input-variable validations. Terraform runs input
+> validations on **every** operation, including `terraform destroy`. That means an invalid combination
+> left in your variables (e.g., `activity_log_categories = []` with activity logs enabled) will block a
+> destroy until you correct the inputs. If you need to tear the module down, ensure the variables are a
+> valid combination first (the simplest valid teardown is the defaults, or both pipelines disabled with
+> `acknowledge_no_log_collection = true`). This is a deliberate tradeoff: validating on all operations
+> keeps the invalid states from silently existing, at the cost of requiring valid inputs to destroy.
+
 ## Outputs
 - `tenant_permissions` – IDs/names for the resource group, storage account, and AAD app/SP per subscription. The `resource_group` and `storage_account` fields are `null` when `enable_activity_logs = false`.
-- `log_collection_posture` – Per-subscription report of which log pipelines are enabled (`activity_logs_enabled`, `flow_logs_enabled`).
+- `log_collection_posture` – Per-subscription report of log pipeline state: `activity_logs_enabled` and `flow_logs_enabled` reflect the input toggles, while `flow_logs_active` is `true` only when flow logs are enabled AND the subscription had at least one discovered VNet (so flow-log resources were actually created). Prefer `flow_logs_active` for "are flow logs really being collected for this subscription"; `flow_logs_enabled` only reflects the flag.
 - `client_secrets` (sensitive) – Client secret metadata and value for the service principal.
 - `skh_jwt_token` (sensitive) – JWT returned from Skyhawk auth.
 - `tenant_registration_response` / `account_registration_responses` (sensitive) – Raw HTTP response data from Skyhawk tenant/account registration.
